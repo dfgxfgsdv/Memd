@@ -1,0 +1,492 @@
+#include <stdio.h>
+#include <dirent.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define FALSE 0
+#define TRUE !FALSE
+#define FOLDER_DIR 1
+#define VIRUS_DIR 2
+#define MAX_FILES 20
+#define MAX_READ 400
+#define MAX_MODE 30
+#define INFECTED 1
+#define CLEAN -1
+
+void check_main_input(int argc);
+int print_manue(char** argv);
+int get_files_num(char **argv);
+int get_file_size(FILE * file);
+void extract_files(char **argv, char **file_names_arr);
+void scan_files(int option, char **file_names_arr, char *log_file_name, char** argv);
+void normal_scan(char *virus_signature, char *file_check, char *modeOfFile);
+void quick_scan(char *virus_signature, char *file_check, char *modeOfFile);
+void make_LogFile(char **argv, int option, char *log_file_name);
+void add_results_LogFile(char *file_name, char *log_file_name, char *modeOfFile);
+void sort(char **file_names_arr, int num_of_files);
+
+int main(int argc, char **argv)
+{
+	int option = 0;//normal scan / quick scan
+	int num_of_files_in_directory = 0;
+
+	char *log_file_name = 0;
+	char **file_names_arr =  0;
+
+	check_main_input(argc);
+	option = print_manue(argv);
+	
+	num_of_files_in_directory = get_files_num(argv);//Counting the files in folder directory
+	file_names_arr = (char**)malloc(num_of_files_in_directory * sizeof(char*));//Allocating dynamic memory by mallo
+	
+	extract_files(argv, file_names_arr);//Getting the file's names
+
+	log_file_name = (char*)malloc(sizeof(char) * strlen(argv[FOLDER_DIR]) + MAX_FILES);//Allocating memory
+	make_LogFile(argv, option, log_file_name);//creating the LogFile
+
+	printf("Scaning began....\n");//Starting to scan
+	printf("This process may take several minutes....\n\n");
+	printf("Scanning: \n");
+
+	//Scan the files and write log
+	scan_files(option, file_names_arr, log_file_name,  argv);
+
+
+	printf("Scan Completed. \nSee log path for results: %s", log_file_name);
+
+	free(log_file_name);
+	free(file_names_arr);
+
+	getchar();
+	getchar();
+	return 0;
+}
+
+/*
+Function checks the main input
+input:
+	the num of arg entered
+output:
+	none
+*/
+void check_main_input(int argc)
+{
+	if (argc != 3)
+	{
+		printf("ERROR! INVALID NUMBER OF ARGUMENTS!\n");
+		printf("Usage: <program> <folder_path path> <virus signture>");
+		exit(0);
+	}
+}
+
+/*
+Function prints the manue
+input:
+	argv - main input
+output:
+	option - user's choice : normal scan or quick scan
+*/
+int print_manue(char** argv)
+{
+	int option = 0;
+	
+
+	printf("Welcome to my Virus Scan!\n\n");
+	printf("folder_path to scan: %s\n", argv[FOLDER_DIR]);
+	printf("Virus signature: %s\n\n", argv[VIRUS_DIR]);
+	printf("Press 0 for a normal scan or any other number for a quick scan: ");
+	scanf("%d", &option);
+	getchar();
+	
+	return option;
+	
+}
+
+/*
+Function will count the number of files in the directory.
+Input:
+	argv - the main input.
+Output:
+	count - the number of files.
+*/
+int get_files_num(char **argv)
+{
+    struct dirent *de;  // Pointer for directory entry 
+	int count=0;
+  
+    // opendir() returns a pointer of DIR type.  
+    DIR *dr = opendir(argv[FOLDER_DIR]); 
+  
+    if (dr == NULL)  // opendir returns NULL if couldn't open directory 
+    { 
+        printf("Could not open current directory" ); 
+        exit(0);
+    } 
+  
+  
+    while ((de = readdir(dr)) != NULL) 
+    {
+		if (de->d_name[0] != '.')
+		{
+			count++;
+		}
+	}
+	rewinddir(dr);
+    closedir(dr); 	
+	return count;
+}
+
+/*
+Function will get all the file names from the directory.
+Input:
+	argv - the main input.
+	file_names_arr - array that including all the file names.
+Output:
+	none
+*/
+void extract_files(char **argv, char **file_names_arr)
+{
+	struct dirent *folder_struct;
+	DIR *folder_path = opendir(argv[FOLDER_DIR]); 
+
+	int i = 0;
+	while ((folder_struct = readdir(folder_path)) != NULL)
+	{
+		if (folder_struct->d_name[0] != '.')//Checking if the file is not hidden
+		{
+			file_names_arr[i] = (char*)malloc(sizeof(char) * strlen(folder_struct->d_name) + 1);
+			strcpy(file_names_arr[i], folder_struct->d_name);
+			i++;
+			free(file_names_arr[i]);
+		}
+	}
+	
+	sort(file_names_arr, get_files_num(argv));//Sorting file names 
+	rewinddir(folder_path);
+	closedir(folder_path); 
+}
+
+/*
+Function will scan the files then write the log file.
+Input:
+	argv - the main input.
+	options - user's option (normal scan - 0\quick scan).
+	file_names_arr - array that including all the file names.
+	log_file_name - log's file name.
+Output:
+	none
+*/
+void scan_files(int option, char **file_names_arr, char *log_file_name, char** argv)
+{
+	char *temp = 0;
+	char *file_name = 0;
+	char *modeOfFile = 0;
+	int i = 0;
+	
+	//Scan the files and write log
+	for (i = 0; i < get_files_num(argv); i++)
+	{
+		// Allocating memory
+		temp = (char*)malloc(sizeof(char) * (strlen(file_names_arr[i]) + 1));
+		file_name = (char*)malloc(sizeof(char) * (strlen(argv[FOLDER_DIR]) + strlen(file_names_arr[i]) + 1) + 1);
+		modeOfFile = (char*)malloc(sizeof(char) * MAX_MODE);
+
+		//Intialize null byte to the last char in the file name
+		temp[strlen(file_names_arr[i])] = '\0';
+		file_name[strlen(file_names_arr[i])] = '\0';
+
+		//Builds the path for the file
+		strcpy(temp, file_names_arr[i]);
+		strcpy(file_name, argv[FOLDER_DIR]);
+		strcat(file_name, "/");
+		strcat(file_name, temp);
+
+		//Scanning the option
+		if (option == 0)
+		{
+			normal_scan(argv[VIRUS_DIR], file_name, modeOfFile);
+		}
+		else
+		{
+			quick_scan(argv[VIRUS_DIR], file_name, modeOfFile);
+		}
+
+		//Log file write the results of the scan
+		add_results_LogFile(file_name, log_file_name, modeOfFile);
+
+		//Freeing dynamic memory
+		free(temp);
+		free(file_name);
+		free(modeOfFile);
+	}
+}
+
+/*
+Function will get the length of a file.
+Input:
+	file - a pointer to a file.
+Output: 
+	length - the length of a file.
+*/
+int get_file_size(FILE * file)
+{
+	int length = 0;
+	fseek(file, 0, SEEK_END);
+	length = ftell(file);
+	rewind(file);
+
+	return length;
+}
+
+/*
+Function will normal scan the files in the folder to check if they are infected or not.
+Input:
+	virus_signature - the path of the virus file.
+	file_check - the path to the file.
+	modeOfFile - a string which will include the full answer (file-path + infected/clean).
+Output:
+	none
+*/
+void normal_scan(char *virus_signature, char *file_check, char *modeOfFile)
+{
+	FILE *fpVirusSign = fopen(virus_signature, "rb");
+	FILE *fpFileToCheck = fopen(file_check, "rb");
+
+	int virusSize = 0;
+	int i = 0;
+	int flag = 1;
+	char *buffer = 0;
+	char *virusContent = 0;
+
+	if (fpVirusSign == NULL || fpFileToCheck == NULL)//Checking if the file exist
+	{
+		printf("Cannot open file.");
+		exit(0);
+	}
+
+	virusSize = get_file_size(fpVirusSign);//Getting the length of the file
+
+	//Allocating memory
+	buffer = (char*)malloc((virusSize * sizeof(char)) + 1);
+	virusContent = (char*)malloc((virusSize * sizeof(char)) + 1);
+
+	rewind(fpVirusSign);
+	fread(virusContent, 1, virusSize, fpVirusSign);
+
+	while (!feof(fpFileToCheck) && flag)
+	{
+		fseek(fpFileToCheck, i, SEEK_SET);
+		fread(buffer, 1, virusSize, fpFileToCheck);
+		i++;
+
+		if (!memcmp(buffer, virusContent, virusSize))
+		{
+			strcpy(modeOfFile, " - Infected!\n");
+			printf("%s%s", file_check, modeOfFile);
+			flag = 0;
+		}
+		else if (feof(fpFileToCheck))
+		{
+			strcpy(modeOfFile, " - Clean\n");
+			printf("%s%s", file_check, modeOfFile);
+		}
+	}
+
+	free(virusContent);
+	free(buffer);
+
+	fclose(fpFileToCheck);
+	fclose(fpVirusSign);
+}
+
+/*
+Function will quick scan the files in the folder to check if they are infected or not.
+Input:
+	virus_signature - the path to the virus file.
+	file_check - the path to the file we want to check if it's infected or not.
+	modeOfFile - a string which will include the full answer (file-path + infected/clean).
+Output:
+	none
+*/
+
+void quick_scan(char *virus_signature, char *file_check, char *modeOfFile)
+{
+	FILE *fpVirusSign = fopen(virus_signature, "rb");
+	FILE *fpFileToCheck = fopen(file_check, "rb");
+
+	int virusSize = get_file_size(fpVirusSign);;
+	int fileSize = get_file_size(fpFileToCheck);
+	int firstPercent = fileSize * 0.2;
+	int i = 0;
+	int infected = 0;	
+	int flag = TRUE;
+	int comparison = 0;
+
+	char *buffer = (char*)malloc((virusSize * sizeof(char)) + 1);
+	char *virusContent = (char*)malloc((virusSize * sizeof(char)) + 1);
+
+	if (fpVirusSign == NULL || fpFileToCheck == NULL) {
+		printf("Cannot open file.");
+		exit(0);
+	}
+
+	rewind(fpVirusSign);
+	fread(virusContent, 1, virusSize, fpVirusSign);
+
+	while (!feof(fpFileToCheck))
+	{
+		fseek(fpFileToCheck, i, SEEK_SET);
+		fread(buffer, 1, virusSize, fpFileToCheck);
+		i++;
+
+		comparison = memcmp(buffer, virusContent, virusSize);
+
+		if (!comparison && i <= firstPercent)
+		{
+			strcpy(modeOfFile, " - Infected! (first 20%)\n");
+			printf("%s%s", file_check, modeOfFile);
+			infected = TRUE;
+			break;
+		}
+		else if (!comparison && i >= fileSize - firstPercent)
+		{
+			strcpy(modeOfFile, " - Infected! (last 20%)\n");
+			printf("%s%s", file_check, modeOfFile);
+			infected = TRUE;
+			break;
+		}
+		else if (!comparison && i >= firstPercent && i <= fileSize)
+		{
+			strcpy(modeOfFile, " - Infected!\n");
+			printf("%s%s", file_check, modeOfFile);
+			infected = TRUE;
+			break;
+		}
+		else if (i == firstPercent)
+		{
+			i = fileSize - firstPercent;
+		}
+		else if (feof(fpFileToCheck) && flag)
+		{
+			i = firstPercent;
+			rewind(fpFileToCheck);
+			flag = FALSE;
+		}
+	}
+
+	if (infected == FALSE)
+	{
+		strcpy(modeOfFile, " - Clean\n");
+		printf("%s%s", file_check, modeOfFile);
+	}
+
+	free(virusContent);
+	free(buffer);
+
+	fclose(fpFileToCheck);
+	fclose(fpVirusSign);
+
+}
+
+/*
+Function will write the info into the log file.
+Input:
+	argv - the main input.
+	options - user's option (normal scan - 0\quick scan).
+	log_file_name - log's file name.
+Output:
+	none
+*/
+void make_LogFile(char **argv, int option, char *log_file_name)
+{
+	int i = 0;
+	char logInfo[MAX_READ] = {0};
+	FILE *fpLogFile = 0;
+	char *folder_name = argv[FOLDER_DIR], *VirusSignName = argv[VIRUS_DIR];
+	
+	memset(logInfo, 0, sizeof(logInfo));
+
+	strcpy(log_file_name, folder_name);
+	strcat(log_file_name, "/AntiVirusLog.txt");
+	fpLogFile = fopen(log_file_name, "w");
+
+	if (fpLogFile == NULL)
+	{
+		printf("Cannot make log file.\n");
+		exit(1);
+	}
+		
+	if (option == 0)
+	{
+		snprintf(logInfo, MAX_READ, "Anti-virus began! Welcome!\n\nFolder to scan:\n%s \n\nVirus signature:\n%s\n\nScanning option:\nNormal Scan\n\nResults:\n", folder_name, VirusSignName);
+	}
+	else
+	{
+		snprintf(logInfo, MAX_READ, "Anti-virus began! Welcome!\n\nFolder to scan:\n%s \n\nVirus signature:\n%s\n\nScanning option:\nQuick Scan\n\nResults:\n", folder_name, VirusSignName);
+	}
+
+	for (i = 0; logInfo[i] != '\0'; i++)
+	{
+		fputc(logInfo[i], fpLogFile);
+	}
+
+	fclose(fpLogFile);
+}
+
+/*
+Function will write the results for the log-file.
+Input:
+	file_name - the name of the file.
+	log_file_name - log's file name.
+	modeOfFile - a string which will include the full answer (file-path + infected/clean).
+Output:
+	none
+*/
+
+void add_results_LogFile(char *file_name, char *log_file_name, char *modeOfFile)
+{
+	int i = 0;
+	FILE *fpLogFile = fopen(log_file_name, "a");
+	modeOfFile[strcspn(modeOfFile, "-")] = ' ';
+
+	for (i = 0; file_name[i] != '\0'; i++)
+	{
+		fputc(file_name[i], fpLogFile);
+	}
+
+	for (i = 0; modeOfFile[i] != '\0'; i++)
+	{
+		fputc(modeOfFile[i], fpLogFile);
+	}
+
+	fclose(fpLogFile);
+}
+
+/*
+Function will bubble sort the file names array.
+Input:
+	file_names_arr - an array which includes all file names.
+	num_of_files - the number of files.
+Output:
+	none
+*/
+
+void sort(char **file_names_arr, int num_of_files)
+{
+	char * temp = 0;
+	int i = 0;
+	int j = 0;
+
+	for (i = 0; i < num_of_files; i++)
+	{
+		for (j = num_of_files - 1; j > i; j--)
+		{
+			if (strcmp(file_names_arr[i], file_names_arr[j]) > 0)
+			{
+				temp = file_names_arr[i];
+				file_names_arr[i] = file_names_arr[j];
+				file_names_arr[j] = temp;
+			}
+		}
+	}
+}
